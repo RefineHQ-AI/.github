@@ -1,6 +1,6 @@
 # AgentDbg
 
-**Local-first debugger for AI agents.**
+**Local-first debugger for AI agents. (v0.2.4)**
 
 When your agent does something unexpected -- calls the wrong tool, loops on the same step, burns through API budget -- you need a timeline, not a dashboard. AgentDbg captures a structured, chronological record of a single agent run: LLM calls, tool calls, state updates, errors, and loop warnings. Then it shows you that timeline in a clean local UI so you can understand what actually happened and fix it.
 
@@ -13,7 +13,9 @@ No accounts. No cloud. No telemetry. Traces live on your machine.
 | Repo | What it is |
 |------|------------|
 | [agentdbg](https://github.com/AgentDbg/agentdbg) | The debugger -- core library, CLI, UI |
-| [tutorials](https://github.com/AgentDbg/tutorials) | Jupyter notebook walkthroughs (LangGraph, OpenAI Agents SDK, runaway loop debugging) |
+| [agentdbg-ts](https://github.com/AgentDbg/agentdbg-ts) | TypeScript compatibility layer for plugin authors |
+| [opencode-plugin](https://github.com/AgentDbg/opencode-plugin) | AgentDbg plugin for OpenCode |
+| [tutorials](https://github.com/AgentDbg/tutorials) | Jupyter notebook walkthroughs (LangChain, OpenAI Agents SDK, runaway loop debugging) |
 
 ---
 
