@@ -1,0 +1,102 @@
+name: 'AgentDbg Assert'
+description: 'Run AgentDbg behavioral regression checks on agent traces'
+env:
+  AGENTDBG_REPO: 'https://github.com/RefineHQ-AI/agentdbg'
+inputs:
+  agent-script:
+    description: 'Python script that runs the agent (must use @trace)'
+    required: true
+  baseline:
+    description: 'Path to baseline JSON file'
+    required: false
+    default: ''
+  policy:
+    description: 'Path to policy YAML file'
+    required: false
+    default: '.agentdbg/policy.yaml'
+  agentdbg-version:
+    description: |
+      AgentDbg version to use.
+      Could be a version number starting with 'v' or a branch name starting with '@'.
+      If a github identifier starts with 'v', use '@' prefix.
+      Otherwise PyPI will be used.
+      Default is "@main".
+    required: false
+    default: '@main'
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+  extra-args:
+    description: 'Additional arguments to pass to agentdbg assert'
+    required: false
+    default: ''
+  post-comment:
+    description: 'Post results as PR comment (true/false)'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install AgentDbg
+      shell: bash
+      run: |
+        if [[ "${{ inputs.agentdbg-version }}" == "@"* ]]; then
+          # GitHub identifier
+          GITHUB_IDENTIFIER="${{ inputs.agentdbg-version:1 }}"
+          pip install git+${{ env.AGENTDBG_REPO }}/${{ GITHUB_IDENTIFIER }}
+        elif [[ "${{ inputs.agentdbg-version }}" == "v"* ]]; then
+          # PyPI version number
+          PYPI_VERSION="${{ inputs.agentdbg-version:1 }}"
+          pip install "agentdbg==${{ PYPI_VERSION }}"
+        else
+          # Let's not allow any other values
+          echo "Invalid agentdbg-version: ${{ inputs.agentdbg-version }}."
+          echo "AgentDbg version must start with 'v' for PyPI version number"
+          echo "or '@' for GitHub identifier."
+          exit 1
+        fi
+
+    - name: Run agent
+      shell: bash
+      run: python ${{ inputs.agent-script }}
+
+    - name: Get latest run ID
+      shell: bash
+      id: get-run
+      run: |
+        RUN_ID=$(agentdbg list --json | python -c "import sys,json; data=json.load(sys.stdin); print(data['runs'][0]['run_id'] if data.get('runs') else '')")
+        echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+
+    - name: Run assertions
+      shell: bash
+      id: assert
+      run: |
+        ARGS=""
+        if [ -n "${{ inputs.baseline }}" ]; then
+          ARGS="$ARGS --baseline ${{ inputs.baseline }}"
+        fi
+        if [ -f "${{ inputs.policy }}" ]; then
+          ARGS="$ARGS --policy ${{ inputs.policy }}"
+        fi
+        if [ -n "${{ inputs.extra-args }}" ]; then
+          ARGS="$ARGS ${{ inputs.extra-args }}"
+        fi
+        agentdbg assert ${{ steps.get-run.outputs.run_id }} $ARGS --format markdown > agentdbg-report.md || echo "assert_failed=true" >> $GITHUB_OUTPUT
+
+    - name: Post PR comment
+      if: ${{ inputs.post-comment == 'true' && github.event_name == 'pull_request' }}
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        path: agentdbg-report.md
+
+    - name: Fail if assertions failed
+      shell: bash
+      if: steps.assert.outputs.assert_failed == 'true'
+      run: exit 1
