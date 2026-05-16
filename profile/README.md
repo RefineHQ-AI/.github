@@ -1,10 +1,18 @@
-# AgentDbg
+# Maida.AI
 
-**Local-first debugger for AI agents. (v0.2.4)**
+**Don't let broken agent changes merge.**
 
-When your agent does something unexpected -- calls the wrong tool, loops on the same step, burns through API budget -- you need a timeline, not a dashboard. AgentDbg captures a structured, chronological record of a single agent run: LLM calls, tool calls, state updates, errors, and loop warnings. Then it shows you that timeline in a clean local UI so you can understand what actually happened and fix it.
+Maida is the pre-merge behavioral regression gate for AI agents. It records
+agent runs, compares current behavior against a known-good baseline, and fails
+CI when structural behavior regresses: more steps, unexpected tool calls, loops,
+latency spikes, or cost blowups.
 
-No accounts. No cloud. No telemetry. Traces live on your machine.
+Maida sits earlier than production tools and complements output evals. Output
+evals ask whether the answer was good. Maida asks whether this PR changed how
+the agent behaves.
+
+No cloud account required. No telemetry by default. Runs stay in your
+environment unless you explicitly export them.
 
 ---
 
@@ -12,68 +20,97 @@ No accounts. No cloud. No telemetry. Traces live on your machine.
 
 | Repo | What it is |
 |------|------------|
-| [agentdbg](https://github.com/AgentDbg/agentdbg) | The debugger -- core library, CLI, UI |
-| [agentdbg-ts](https://github.com/AgentDbg/agentdbg-ts) | TypeScript compatibility layer for plugin authors |
-| [opencode-plugin](https://github.com/AgentDbg/opencode-plugin) | AgentDbg plugin for OpenCode |
-| [tutorials](https://github.com/AgentDbg/tutorials) | Jupyter notebook walkthroughs (LangChain, OpenAI Agents SDK, runaway loop debugging) |
+| [maida](https://github.com/maida-ai/maida) | Python package, `maida` CLI, SDK, local run storage, and timeline viewer |
+| [maida-assert](https://github.com/maida-ai/maida-assert) | GitHub Action for running Maida behavioral checks on pull requests |
+| [maida-tutorials](https://github.com/maida-ai/maida-tutorials) | Example workflows and walkthroughs for trying Maida on agent code |
+| [maida-ts](https://github.com/maida-ai/maida-ts) | TypeScript compatibility layer for integrations and plugin authors |
+| [opencode-plugin](https://github.com/maida-ai/opencode-plugin) | Maida plugin for OpenCode |
 
 ---
 
-## Quick start
+## Quick Start
+
+Install the `maida-ai` package from PyPI. It provides the `maida` CLI and the
+`maida` Python module.
 
 ```bash
-pip install agentdbg
+pip install maida-ai
 ```
 
+Instrument one agent entrypoint:
+
 ```python
-from agentdbg import trace
+from maida import trace
 
 @trace
-def run_my_agent():
-    # your agent code here
+def run_agent(input: str):
+    # Your existing agent code
     ...
-
-run_my_agent()
 ```
+
+Capture a known-good baseline:
 
 ```bash
-agentdbg view
+python my_agent.py
+maida list --json
+maida baseline <RUN_ID> --out baselines/my_agent.json
 ```
 
-That's it. A timeline of every LLM call, tool call, and error -- locally, in your browser, in under 10 minutes.
+Assert a future run against that baseline:
 
----
-
-## Works with
-
-- **LangChain / LangGraph** -- drop-in callback handler
-- **OpenAI Agents SDK** -- tracing processor adapter
-- **CrewAI** -- execution hook integration
-- **Any Python agent** -- manual `record_llm_call` / `record_tool_call` API
-
-All integrations are optional. Import to enable. No lock-in.
-
----
-
-## Stop runaway loops
-
-```python
-@trace(stop_on_loop=True, max_llm_calls=50)
-def run_my_agent():
-    ...
+```bash
+python my_agent.py
+maida assert <RUN_ID> --baseline baselines/my_agent.json --policy .maida/policy.yaml --format markdown
 ```
 
-AgentDbg detects repeated call patterns and -- if you opt in -- aborts before they drain your budget. The abort is recorded in the timeline so you know exactly where and why it stopped.
+---
+
+## GitHub Action
+
+Use `maida-ai/maida-assert@v2` to block behavioral regressions before merge.
+
+```yaml
+name: Agent Regression Check
+
+on: [pull_request]
+
+jobs:
+  agent-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maida-ai/maida-assert@v2
+        with:
+          agent-script: my_agent.py
+          baseline: baselines/my_agent.json
+          policy: .maida/policy.yaml
+          python-version: '3.12'
+```
+
+Your `agent-script` must use `@trace` or `traced_run()` so Maida can record a
+run.
 
 ---
 
-## Design principles
+## What Maida Flags
 
-- **Debugger, not observability.** This is for development-time clarity, not production monitoring.
-- **Local-first.** Traces are plain files on disk (`run.json` + `events.jsonl`). No accounts, no setup, no data leaving your machine.
-- **Framework-agnostic core.** The core library has no framework dependencies. Integrations are thin, optional adapters.
-- **Fixed event taxonomy.** Seven event types, clearly defined. No surprise schema drift.
+- Step-count regressions
+- Tool-call count regressions
+- Unexpected tool paths
+- Loop risk
+- Guardrail events
+- Latency envelope changes
+- Cost envelope changes
+- Missing stop conditions
+
+These are behavioral regression signals. They do not prove output quality. They
+tell you when an agent's execution behavior changed relative to a baseline.
 
 ---
 
-PyPI: [`agentdbg`](https://pypi.org/project/agentdbg/) -- Issues and PRs welcome.
+Website: [maida.ai](https://maida.ai)
+PyPI: [`maida-ai`](https://pypi.org/project/maida-ai/)
+Contact: [contact@maida.ai](mailto:contact@maida.ai)
